@@ -1,5 +1,5 @@
 <?php
-namespace unapi\services\smsarea;
+namespace unapi\smsarea;
 
 use GuzzleHttp\Client;
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace unapi\services\smsarea;
+namespace unapi\smsarea;
 
 use GuzzleHttp\Promise\FulfilledPromise;
 use GuzzleHttp\Promise\PromiseInterface;
@@ -22,7 +22,7 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
     private $key;
     /** @var LoggerInterface */
     private $logger;
-    /** @var integer */
+    /** @var int */
     private $retryCount = 100;
 
     /** @var string */
