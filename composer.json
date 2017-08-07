@@ -1,0 +1,21 @@
+{
+    "name": "unapi/anticaptcha-antigate",
+    "description": "Unapi anticaptcha common classes",
+    "keywords": ["unapi", "guzzle", "promise", "sms", "virtual phone", "sms-area.org"],
+    "type": "library",
+    "minimum-stability": "stable",
+    "require": {
+        "php": ">=7.1.0",
+        "guzzlehttp/guzzle": "^6.3",
+        "unapi/sms-common": "^1.0",
+        "psr/log": "^1.0"
+    },
+    "autoload" : {
+        "psr-4": {
+            "unapi\\sms\\smsarea\\": "src"
+        }
+    },
+    "config": {
+        "process-timeout": 1800
+    }
+}
