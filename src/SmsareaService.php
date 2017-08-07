@@ -1,6 +1,6 @@
 <?php
 
-namespace unapi\smsarea;
+namespace unapi\sms\smsarea;
 
 use GuzzleHttp\Promise\FulfilledPromise;
 use GuzzleHttp\Promise\PromiseInterface;
