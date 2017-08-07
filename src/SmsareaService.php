@@ -220,7 +220,7 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
      */
     public function getSmsMessage(ServicePhoneDto $servicePhone): PromiseInterface
     {
-        return $this->waitState($servicePhone->getId(), ['STATUS_OK'])
+        return $this->waitState($servicePhone->getId(), ['STATUS_OK'], 0)
             ->then(function (GetStateResponse $state) {
                 return new FulfilledPromise(
                     $state->getMsg()
@@ -234,7 +234,7 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
      * @param int $cnt
      * @return PromiseInterface
      */
-    protected function waitState(string $id, array $waitedResponses, int $cnt = 0): PromiseInterface
+    protected function waitState(string $id, array $waitedResponses, int $cnt): PromiseInterface
     {
         if ($cnt > $this->retryCount)
             return new RejectedPromise('Terminated by waitState counter');
