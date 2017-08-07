@@ -1,5 +1,5 @@
 {
-    "name": "unapi/anticaptcha-antigate",
+    "name": "unapi/sms-smsarea",
     "description": "Unapi anticaptcha common classes",
     "keywords": ["unapi", "guzzle", "promise", "sms", "virtual phone", "sms-area.org"],
     "type": "library",
