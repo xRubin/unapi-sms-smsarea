@@ -1,6 +1,6 @@
 {
     "name": "unapi/sms-smsarea",
-    "description": "Unapi anticaptcha common classes",
+    "description": "Unapi http://sms-area.org/ sms service wrapper",
     "keywords": ["unapi", "guzzle", "promise", "sms", "virtual phone", "sms-area.org"],
     "type": "library",
     "minimum-stability": "stable",
