@@ -10,6 +10,7 @@ use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use unapi\sms\common\dto\ServicePhoneInterface;
+use unapi\sms\common\dto\TaskInterface;
 use unapi\sms\common\LeaseServiceInterface;
 use unapi\sms\smsarea\dto\StateResponseInterface;
 
@@ -161,19 +162,19 @@ class SmsareaService implements LeaseServiceInterface, LoggerAwareInterface
     }
 
     /**
-     * @param string $id
+     * @param TaskInterface $task
      * @param int $status
      * @return PromiseInterface
      */
-    protected function setStatus(string $id, int $status): PromiseInterface
+    protected function setStatus(TaskInterface $task, int $status): PromiseInterface
     {
-        $this->getLogger()->info('Выставляем задаче {taskId} статус {status}' , ['taskId' => $id, 'status' => $status]);
+        $this->getLogger()->info('Выставляем задаче {taskId} статус {status}' , ['taskId' => $task->getId(), 'status' => $status]);
 
         return $this->client->requestAsync('GET', '/stubs/handler_api.php', [
             'query' => [
                 'api_key' => $this->key,
                 'action' => 'setStatus',
-                'id' => $id,
+                'id' => $task->getId(),
                 'status' => $status
             ]
         ]);
@@ -194,22 +195,22 @@ class SmsareaService implements LeaseServiceInterface, LoggerAwareInterface
     }
 
     /**
-     * @param string $id
+     * @param TaskInterface $task
      * @param array $waitedResponses
      * @param int $cnt
      * @return PromiseInterface
      */
-    protected function waitState(string $id, array $waitedResponses, int $cnt): PromiseInterface
+    protected function waitState(TaskInterface $task, array $waitedResponses, int $cnt): PromiseInterface
     {
         if ($cnt > $this->retryCount)
             return new RejectedPromise('Terminated by waitState counter');
 
-        $this->getLogger()->debug('Задача {taskId} ожидает статус {status}' , ['taskId' => $id, 'status' => var_export($waitedResponses, true)]);
+        $this->getLogger()->debug('Задача {taskId} ожидает статус {status}' , ['taskId' => $task->getId(), 'status' => var_export($waitedResponses, true)]);
 
-        return $this->getState($id)->then(function (StateResponseInterface $state) use ($id, $waitedResponses, $cnt) {
+        return $this->getState($task)->then(function (StateResponseInterface $state) use ($task, $waitedResponses, $cnt) {
 
             if (!in_array($state->getResponse(), $waitedResponses))
-                return $this->waitState($id, $waitedResponses, ++$cnt);
+                return $this->waitState($task, $waitedResponses, ++$cnt);
 
             return $state;
         });
@@ -217,18 +218,18 @@ class SmsareaService implements LeaseServiceInterface, LoggerAwareInterface
 
     /**
      * Позволяет получить информацию о состоянии операции
-     * @param string $id
+     * @param TaskInterface $task
      * @return PromiseInterface
      */
-    public function getState(string $id): PromiseInterface
+    public function getState(TaskInterface $task): PromiseInterface
     {
         return $this->client->requestAsync('GET', '/stubs/handler_api.php', [
             'query' => [
                 'api_key' => $this->key,
                 'action' => 'getStatus',
-                'id' => $id,
+                'id' => $task->getId(),
             ]
-        ])->then(function (ResponseInterface $response) use ($id) {
+        ])->then(function (ResponseInterface $response) {
             return $this->parser->parseStateResponse($response);
         });
     }
