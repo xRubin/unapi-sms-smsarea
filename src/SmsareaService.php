@@ -9,26 +9,27 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-use unapi\sms\common\PhoneDto;
-use unapi\sms\common\ServicePhoneDto;
-use unapi\sms\common\SmsServiceInterface;
-use unapi\sms\common\TaskDto;
+use unapi\sms\common\dto\ServicePhoneInterface;
+use unapi\sms\common\LeaseServiceInterface;
+use unapi\sms\smsarea\dto\StateResponseInterface;
 
-class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
+class SmsareaService implements LeaseServiceInterface, LoggerAwareInterface
 {
     /** @var SmsareaClient */
     private $client;
-    /** @var string */
-    private $key;
     /** @var LoggerInterface */
     private $logger;
-    /** @var int */
-    private $retryCount = 100;
+    /** @var ParserInterface */
+    private $parser;
 
+    /** @var string */
+    private $key;
     /** @var string */
     private $country = 'ru';
     /** @var string */
     private $service = 'or';
+    /** @var int */
+    private $retryCount = 100;
 
     /**
      * @param array $config Service configuration settings.
@@ -57,16 +58,26 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
             throw new \InvalidArgumentException('Logger must be instance of LoggerInterface');
         }
 
+        if (!isset($config['parser'])) {
+            $this->parser = new Parser(['logger' => $this->logger]);
+        } else {
+            if ($config['parser'] instanceof ParserInterface) {
+                $this->parser = $config['parser'];
+            } else {
+                throw new \InvalidArgumentException('Parser must be instance of ParserInterface');
+            }
+        }
+
         if (isset($config['retryCount'])) {
             $this->retryCount = $config['retryCount'];
         }
 
         if (isset($config['country'])) {
-            $this->setCountry($config['country']);
+            $this->country = $config['country'];
         }
 
         if (isset($config['service'])) {
-            $this->setService($config['service']);
+            $this->service = $config['service'];
         }
     }
 
@@ -79,23 +90,11 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
     }
 
     /**
-     * @param string $value
-     * @return $this
+     * @return LoggerInterface
      */
-    public function setCountry(string $value)
+    public function getLogger(): LoggerInterface
     {
-        $this->country = $value;
-        return $this;
-    }
-
-    /**
-     * @param string $value
-     * @return $this
-     */
-    public function setService(string $value)
-    {
-        $this->service = $value;
-        return $this;
+        return $this->logger;
     }
 
     /**
@@ -104,7 +103,7 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
      */
     public function getPhone(): PromiseInterface
     {
-        $this->logger->debug('Запрос на новый номер');
+        $this->getLogger()->info('Запрос на новый номер');
 
         return $this->client->requestAsync('GET', '/stubs/handler_api.php', [
             'query' => [
@@ -115,83 +114,49 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
                 'count' => 1
             ]
         ])->then(function (ResponseInterface $response) {
-            $data = $response->getBody()->getContents();
-            $this->logger->debug($data);
-            $parts = explode(':', $data);
-            switch ($parts[0]) {
-                case 'ACCESS_NUMBER':
-                    return new FulfilledPromise(
-                        new ServicePhoneDto(
-                            new TaskDto($parts[1]),
-                            new PhoneDto($parts[2])
-                        )
-                    );
-                default:
-                    return new RejectedPromise($data);
-            }
+            return $this->parser->parseServicePhone($response);
         });
     }
 
     /**
-     * @param ServicePhoneDto $servicePhone
+     * @param ServicePhoneInterface $servicePhone
      * @return PromiseInterface
      */
-    public function declinePhone(ServicePhoneDto $servicePhone): PromiseInterface
+    public function declinePhone(ServicePhoneInterface $servicePhone): PromiseInterface
     {
-        $this->logger->debug('Отклоняем задачу {taskId}' , ['taskId' => $servicePhone->getId()]);
+        $this->getLogger()->info('Отклоняем задачу {taskId}' , ['taskId' => $servicePhone->getId()]);
 
         return $this->setStatus($servicePhone->getId(), 10)
             ->then(function (ResponseInterface $response) {
-                $data = $response->getBody()->getContents();
-                $this->logger->debug($data);
-                switch ($data) {
-                    case 'ACCESS_ERROR_NUMBER_GET':
-                        return new FulfilledPromise('OK');
-                    default:
-                        return new RejectedPromise($data);
-                }
+                return $this->parser->parseDeclinePhoneResult($response);
             });
     }
 
     /**
-     * @param ServicePhoneDto $servicePhone
+     * @param ServicePhoneInterface $servicePhone
      * @return PromiseInterface
      */
-    public function readyPhone(ServicePhoneDto $servicePhone): PromiseInterface
+    public function readyPhone(ServicePhoneInterface $servicePhone): PromiseInterface
     {
-        $this->logger->debug('Активируем задачу {taskId}' , ['taskId' => $servicePhone->getId()]);
+        $this->getLogger()->info('Активируем задачу {taskId}' , ['taskId' => $servicePhone->getId()]);
 
         return $this->setStatus($servicePhone->getId(), 1)
             ->then(function (ResponseInterface $response) {
-                $data = $response->getBody()->getContents();
-                $this->logger->debug($data);
-                switch ($data) {
-                    case 'ACCESS_READY':
-                        return new FulfilledPromise('OK');
-                    default:
-                        return new RejectedPromise($data);
-                }
+                return $this->parser->parseReadyPhoneResult($response);
             });
     }
 
     /**
-     * @param ServicePhoneDto $servicePhone
+     * @param ServicePhoneInterface $servicePhone
      * @return PromiseInterface
      */
-    public function confirmPhone(ServicePhoneDto $servicePhone): PromiseInterface
+    public function confirmPhone(ServicePhoneInterface $servicePhone): PromiseInterface
     {
-        $this->logger->debug('Подтверждаем что задача {taskId} выполнена' , ['taskId' => $servicePhone->getId()]);
+        $this->getLogger()->info('Подтверждаем что задача {taskId} выполнена' , ['taskId' => $servicePhone->getId()]);
 
         return $this->setStatus($servicePhone->getId(), 6)
             ->then(function (ResponseInterface $response) {
-                $data = $response->getBody()->getContents();
-                $this->logger->debug($data);
-                switch ($data) {
-                    case 'ACCESS_ACTIVATION':
-                        return new FulfilledPromise('OK');
-                    default:
-                        return new RejectedPromise($data);
-                }
+                return $this->parser->parseConfirmPhoneResult($response);
             });
     }
 
@@ -202,7 +167,7 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
      */
     protected function setStatus(string $id, int $status): PromiseInterface
     {
-        $this->logger->debug('Выставляем задаче {taskId} статус {status}' , ['taskId' => $id, 'status' => $status]);
+        $this->getLogger()->info('Выставляем задаче {taskId} статус {status}' , ['taskId' => $id, 'status' => $status]);
 
         return $this->client->requestAsync('GET', '/stubs/handler_api.php', [
             'query' => [
@@ -215,13 +180,13 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
     }
 
     /**
-     * @param ServicePhoneDto $servicePhone
+     * @param ServicePhoneInterface $servicePhone
      * @return PromiseInterface
      */
-    public function getSmsMessage(ServicePhoneDto $servicePhone): PromiseInterface
+    public function getSmsMessage(ServicePhoneInterface $servicePhone): PromiseInterface
     {
         return $this->waitState($servicePhone->getId(), ['STATUS_OK'], 0)
-            ->then(function (GetStateResponse $state) {
+            ->then(function (StateResponseInterface $state) {
                 return new FulfilledPromise(
                     $state->getMsg()
                 );
@@ -239,9 +204,9 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
         if ($cnt > $this->retryCount)
             return new RejectedPromise('Terminated by waitState counter');
 
-        $this->logger->debug('Задача {taskId} ожидает статус {status}' , ['taskId' => $id, 'status' => var_export($waitedResponses, true)]);
+        $this->getLogger()->debug('Задача {taskId} ожидает статус {status}' , ['taskId' => $id, 'status' => var_export($waitedResponses, true)]);
 
-        return $this->getState($id)->then(function (GetStateResponse $state) use ($id, $waitedResponses, $cnt) {
+        return $this->getState($id)->then(function (StateResponseInterface $state) use ($id, $waitedResponses, $cnt) {
 
             if (!in_array($state->getResponse(), $waitedResponses))
                 return $this->waitState($id, $waitedResponses, ++$cnt);
@@ -264,28 +229,7 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
                 'id' => $id,
             ]
         ])->then(function (ResponseInterface $response) use ($id) {
-            $data = $response->getBody()->getContents();
-            $this->logger->debug($data);
-            $parts = explode(':', $data);
-            switch ($parts[0]) {
-                case 'STATUS_CANCEL': // Активация отменена
-                case 'STATUS_WAIT_READY': // Ожидаение готовности
-                case 'STATUS_WAIT_CODE': // Ожидание кода
-                case 'STATUS_WAIT_RETRY': // Ожидание уточнения кода
-                case 'STATUS_WAIT_SCREEN': // Ожидание скрина
-                case 'STATUS_WAIT_RESEND': // Ожидание переотправки SMS (Активатор ждет, пока вы переотправите SMS)
-                    return new FulfilledPromise(
-                        new GetStateResponse($parts[0])
-                    );
-                case 'STATUS_OK': // Код получен
-                case 'STATUS_ACCESS': // Активация завершена
-                case 'STATUS_ACCESS_SCREEN': // Активация завершена согласно скрину
-                    return new FulfilledPromise(
-                        new GetStateResponse($parts[0], $parts[1])
-                    );
-                default:
-                    return new RejectedPromise($data);
-            }
+            return $this->parser->parseStateResponse($response);
         });
     }
 
@@ -301,16 +245,7 @@ class SmsareaService implements SmsServiceInterface, LoggerAwareInterface
                 'action' => 'getBalance',
             ]
         ])->then(function (ResponseInterface $response) {
-            $data = $response->getBody()->getContents();
-            $parts = explode(':', $data);
-            switch ($parts[0]) {
-                case 'ACCESS_BALANCE':
-                    return new FulfilledPromise(
-                        $parts[1]
-                    );
-                default:
-                    return new RejectedPromise($data);
-            }
+            return $this->parser->parseBalance($response);
         });
     }
 }
